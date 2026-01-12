@@ -144,6 +144,7 @@ fn run_affected(
             total_sources,
         ),
         OutputFormat::List => OutputFormatter::format_list(&result.tests),
+        OutputFormat::Paths => OutputFormatter::format_paths(&result.tests),
         OutputFormat::Coverage => OutputFormatter::format_coverage_from(&result.sources),
     };
 

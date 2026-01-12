@@ -7,7 +7,7 @@ A blazing-fast smart test selector for JavaScript/TypeScript monorepos. Only run
 - 🚀 **Fast** - Built in Rust, parses 12,000+ files in seconds
 - 🎯 **Accurate** - Tracks transitive dependencies through barrel files
 - 📦 **Monorepo-aware** - Follows workspace package symlinks
-- 🔧 **Jest-compatible** - Outputs `--testPathPattern` for Jest
+- 🔧 **Jest-compatible** - Outputs paths for `--runTestsByPath` (exact matching)
 - 💾 **Cached** - Incremental updates for even faster subsequent runs
 
 ## Installation
@@ -24,12 +24,12 @@ npx scopetest-cli affected --base main
 # Find tests affected by changes on current branch vs main
 scopetest affected --base main
 
-# Output as Jest pattern (default)
+# Output as Jest paths (default)
 scopetest affected --base main --format jest
-# Output: Button\.spec\.ts|Header\.spec\.ts
+# Output: path/to/Button.spec.ts path/to/Header.spec.ts
 
-# Run only affected tests
-jest --testPathPattern="$(scopetest affected --base main)"
+# Run only affected tests (recommended - exact matching, faster)
+jest --runTestsByPath $(scopetest affected --base main)
 
 # JSON output with stats
 scopetest affected --base main --format json
@@ -46,7 +46,7 @@ scopetest affected [OPTIONS]
 
 Options:
   -b, --base <REF>      Base branch/commit to compare against
-  -f, --format <FMT>    Output format: jest, json, list [default: jest]
+  -f, --format <FMT>    Output format: jest, json, list, paths, coverage [default: jest]
       --no-cache        Skip cache, force full rebuild
   -r, --root <PATH>     Project root directory
 ```
@@ -71,8 +71,20 @@ scopetest coverage [OPTIONS]
 
 Options:
   -b, --base <REF>      Base branch/commit
-  -f, --format <FMT>    Output format: list, json [default: list]
+  -t, --threshold <N>   Coverage threshold percentage [default: 80]
+      --threshold-config Output threshold config instead of file list
+  -r, --root <PATH>     Project root directory
 ```
+
+## Output Formats
+
+| Format | Description | Example |
+|--------|-------------|---------|
+| `jest` | Space-separated paths for `--runTestsByPath` | `src/a.spec.ts src/b.spec.ts` |
+| `list` | Newline-separated paths | `src/a.spec.ts\nsrc/b.spec.ts` |
+| `paths` | Space-separated paths | `src/a.spec.ts src/b.spec.ts` |
+| `json` | JSON with tests, sources, and stats | `{"tests": [...], "stats": {...}}` |
+| `coverage` | Comma-separated source files | `src/a.ts,src/b.ts` |
 
 ## Configuration
 
@@ -104,8 +116,8 @@ Create `.scopetestrc.json` in your project root:
 - name: Run affected tests
   run: |
     AFFECTED=$(npx scopetest-cli affected --base origin/main)
-    if [ -n "$AFFECTED" ] && [ "$AFFECTED" != "^$" ]; then
-      jest --testPathPattern="$AFFECTED"
+    if [ -n "$AFFECTED" ]; then
+      jest --runTestsByPath $AFFECTED
     else
       echo "No affected tests"
     fi
@@ -115,8 +127,8 @@ Create `.scopetestrc.json` in your project root:
 
 ```bash
 AFFECTED=$(npx scopetest-cli affected --base origin/master)
-if [ -n "$AFFECTED" ] && [ "$AFFECTED" != "^$" ]; then
-  npm test -- --testPathPattern="$AFFECTED"
+if [ -n "$AFFECTED" ]; then
+  npx jest --runTestsByPath $AFFECTED
 fi
 ```
 

@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 use serde::Serialize;
-use regex::escape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
     Jest,
     Json,
     List,
+    Paths,
     Coverage,
 }
 
@@ -18,6 +18,7 @@ impl std::str::FromStr for OutputFormat {
             "jest" => Ok(OutputFormat::Jest),
             "json" => Ok(OutputFormat::Json),
             "list" => Ok(OutputFormat::List),
+            "paths" => Ok(OutputFormat::Paths),
             "coverage" => Ok(OutputFormat::Coverage),
             _ => Err(format!("Unknown format: {}", s)),
         }
@@ -56,18 +57,20 @@ impl Default for CoverageThreshold {
 pub struct OutputFormatter;
 
 impl OutputFormatter {
+    /// Format for Jest's --runTestsByPath flag (exact path matching)
+    /// Usage: jest --runTestsByPath $(scopetest affected -f jest)
     pub fn format_jest_pattern(tests: &[PathBuf]) -> String {
         if tests.is_empty() {
-            return "^$".to_string();
+            return String::new();
         }
 
+        // Output space-separated paths for use with --runTestsByPath
+        // This ensures exact file matching without regex overhead
         tests
             .iter()
-            .filter_map(|p| p.file_name())
-            .filter_map(|n| n.to_str())
-            .map(|n| escape(n))
+            .filter_map(|p| p.to_str())
             .collect::<Vec<_>>()
-            .join("|")
+            .join(" ")
     }
 
     pub fn format_json(
@@ -96,6 +99,14 @@ impl OutputFormatter {
             .filter_map(|p| p.to_str())
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    pub fn format_paths(files: &[PathBuf]) -> String {
+        files
+            .iter()
+            .filter_map(|p| p.to_str())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     pub fn format_coverage_from(sources: &[PathBuf]) -> String {
@@ -140,26 +151,24 @@ mod tests {
     #[test]
     fn test_jest_pattern_empty() {
         let pattern = OutputFormatter::format_jest_pattern(&[]);
-        assert_eq!(pattern, "^$");
+        assert_eq!(pattern, "");
     }
 
     #[test]
     fn test_jest_pattern_single() {
-        let tests = vec![PathBuf::from("/src/foo.spec.ts")];
+        let tests = vec![PathBuf::from("src/foo.spec.ts")];
         let pattern = OutputFormatter::format_jest_pattern(&tests);
-        assert_eq!(pattern, "foo\\.spec\\.ts");
+        assert_eq!(pattern, "src/foo.spec.ts");
     }
 
     #[test]
     fn test_jest_pattern_multiple() {
         let tests = vec![
-            PathBuf::from("/src/foo.spec.ts"),
-            PathBuf::from("/src/bar.test.ts"),
+            PathBuf::from("src/foo.spec.ts"),
+            PathBuf::from("src/bar.test.ts"),
         ];
         let pattern = OutputFormatter::format_jest_pattern(&tests);
-        assert!(pattern.contains("foo\\.spec\\.ts"));
-        assert!(pattern.contains("bar\\.test\\.ts"));
-        assert!(pattern.contains("|"));
+        assert_eq!(pattern, "src/foo.spec.ts src/bar.test.ts");
     }
 
     #[test]
