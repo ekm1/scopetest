@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 use clap::{Parser, Subcommand};
 use anyhow::Result;
 
@@ -8,7 +8,7 @@ use scopetest::builder::GraphBuilder;
 use scopetest::cache::CacheManager;
 use scopetest::git::GitChangeDetector;
 use scopetest::affected::AffectedTestFinder;
-use scopetest::output::{OutputFormat, OutputFormatter, CoverageThreshold};
+use scopetest::output::{OutputFormat, OutputFormatter};
 
 #[derive(Parser)]
 #[command(name = "scopetest")]
@@ -27,9 +27,13 @@ enum Commands {
         #[arg(short, long)]
         base: Option<String>,
 
-        /// Output format: jest, json, list
-        #[arg(short, long, default_value = "jest")]
+        /// Output format: paths, list, json (aliases: jest, vitest)
+        #[arg(short, long, default_value = "paths")]
         format: String,
+
+        /// Output affected source files instead of tests
+        #[arg(long)]
+        sources: bool,
 
         /// Disable cache
         #[arg(long)]
@@ -38,29 +42,14 @@ enum Commands {
         /// Project root directory
         #[arg(short, long)]
         root: Option<PathBuf>,
+
+        /// Execute command with {} replaced by affected files
+        #[arg(short = 'x', long)]
+        exec: Option<String>,
     },
 
     /// Build or rebuild the dependency graph
     Build {
-        /// Project root directory
-        #[arg(short, long)]
-        root: Option<PathBuf>,
-    },
-
-    /// Output coverage scope configuration
-    Coverage {
-        /// Git reference to compare against
-        #[arg(short, long)]
-        base: Option<String>,
-
-        /// Coverage threshold percentage
-        #[arg(short, long, default_value = "80")]
-        threshold: u8,
-
-        /// Output threshold config instead of file list
-        #[arg(long)]
-        threshold_config: bool,
-
         /// Project root directory
         #[arg(short, long)]
         root: Option<PathBuf>,
@@ -71,19 +60,16 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Affected { base, format, no_cache, root } => {
-            run_affected(base, format, no_cache, root)
+        Commands::Affected { base, format, sources, no_cache, root, exec } => {
+            run_affected(base, format, sources, no_cache, root, exec)
         }
         Commands::Build { root } => {
             run_build(root)
         }
-        Commands::Coverage { base, threshold, threshold_config, root } => {
-            run_coverage(base, threshold, threshold_config, root)
-        }
     };
 
     match result {
-        Ok(_) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {}", e);
             ExitCode::FAILURE
@@ -98,9 +84,11 @@ fn get_root(root: Option<PathBuf>) -> PathBuf {
 fn run_affected(
     base: Option<String>,
     format: String,
+    sources: bool,
     no_cache: bool,
     root: Option<PathBuf>,
-) -> Result<()> {
+    exec: Option<String>,
+) -> Result<ExitCode> {
     let root = get_root(root);
     let config = Config::load(&root)?;
     let cache = CacheManager::new(&root);
@@ -122,36 +110,65 @@ fn run_affected(
     };
 
     // Detect changes
-    let git = GitChangeDetector::new(root)?;
+    let git = GitChangeDetector::new(root.clone())?;
     let base_ref = base.unwrap_or_else(|| git.get_default_base());
     let changes = git.detect_changes(&base_ref)?;
 
-    // Find affected tests
+    // Find affected
     let finder = AffectedTestFinder::new(&graph);
     let result = finder.find_affected(&changes);
     let (total_tests, total_sources) = finder.get_totals();
+
+    // Choose files based on --sources flag
+    let files = if sources { &result.sources } else { &result.tests };
 
     // Format output
     let output_format: OutputFormat = format.parse()
         .map_err(|e: String| anyhow::anyhow!(e))?;
 
     let output = match output_format {
-        OutputFormat::Jest => OutputFormatter::format_jest_pattern(&result.tests),
+        OutputFormat::Paths => OutputFormatter::format_paths(files),
         OutputFormat::Json => OutputFormatter::format_json(
             &result.tests,
             &result.sources,
             total_tests,
             total_sources,
         ),
-        OutputFormat::List => OutputFormatter::format_list(&result.tests),
-        OutputFormat::Coverage => OutputFormatter::format_coverage_from(&result.sources),
+        OutputFormat::List => OutputFormatter::format_list(files),
     };
 
-    println!("{}", output);
-    Ok(())
+    // Execute command or print output
+    if let Some(cmd_template) = exec {
+        if files.is_empty() {
+            eprintln!("No affected files found.");
+            return Ok(ExitCode::SUCCESS);
+        }
+
+        let files_str = OutputFormatter::format_paths(files);
+        let cmd_str = cmd_template.replace("{}", &files_str);
+        
+        eprintln!("Running: {}", cmd_str);
+        
+        let status = Command::new("sh")
+            .arg("-c")
+            .arg(&cmd_str)
+            .current_dir(&root)
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()?;
+
+        if !status.success() {
+            return Ok(ExitCode::from(status.code().unwrap_or(1) as u8));
+        }
+    } else {
+        println!("{}", output);
+    }
+
+    Ok(ExitCode::SUCCESS)
 }
 
-fn run_build(root: Option<PathBuf>) -> Result<()> {
+fn run_build(root: Option<PathBuf>) -> Result<ExitCode> {
     let root = get_root(root);
     let config = Config::load(&root)?;
     let cache = CacheManager::new(&root);
@@ -166,54 +183,5 @@ fn run_build(root: Option<PathBuf>) -> Result<()> {
     cache.save(&graph)?;
     eprintln!("Cache saved.");
 
-    Ok(())
-}
-
-fn run_coverage(
-    base: Option<String>,
-    threshold: u8,
-    threshold_config: bool,
-    root: Option<PathBuf>,
-) -> Result<()> {
-    let root = get_root(root);
-    let config = Config::load(&root)?;
-    let cache = CacheManager::new(&root);
-
-    // Load or build graph
-    let graph = match cache.load() {
-        Ok(Some(g)) => g,
-        _ => {
-            let builder = GraphBuilder::new(root.clone(), config.clone());
-            let g = builder.build()?;
-            let _ = cache.save(&g);
-            g
-        }
-    };
-
-    // Detect changes
-    let git = GitChangeDetector::new(root)?;
-    let base_ref = base.unwrap_or_else(|| git.get_default_base());
-    let changes = git.detect_changes(&base_ref)?;
-
-    // Find affected
-    let finder = AffectedTestFinder::new(&graph);
-    let result = finder.find_affected(&changes);
-
-    // Output coverage config
-    let output = if threshold_config {
-        OutputFormatter::format_coverage_threshold(
-            &result.sources,
-            CoverageThreshold {
-                branches: threshold,
-                lines: threshold,
-                functions: threshold,
-                statements: threshold,
-            },
-        )
-    } else {
-        OutputFormatter::format_coverage_from(&result.sources)
-    };
-
-    println!("{}", output);
-    Ok(())
+    Ok(ExitCode::SUCCESS)
 }

@@ -1,159 +1,130 @@
-# scopetest-cli
+# scopetest
 
-A blazing-fast smart test selector for JavaScript/TypeScript monorepos. Only run tests affected by your changes.
+[![npm version](https://img.shields.io/npm/v/scopetest-cli.svg)](https://www.npmjs.com/package/scopetest-cli)
+[![npm downloads](https://img.shields.io/npm/dm/scopetest-cli.svg)](https://www.npmjs.com/package/scopetest-cli)
+[![license](https://img.shields.io/npm/l/scopetest-cli.svg)](https://github.com/ekm1/scopetest/blob/main/LICENSE)
 
-## Features
+Run only the tests that matter. A fast, dependency-aware test selector for JS/TS monorepos.
 
-- 🚀 **Fast** - Built in Rust, parses 12,000+ files in seconds
-- 🎯 **Accurate** - Tracks transitive dependencies through barrel files
-- 📦 **Monorepo-aware** - Follows workspace package symlinks
-- 🔧 **Jest-compatible** - Outputs paths for `--runTestsByPath` (exact matching)
-- 💾 **Cached** - Incremental updates for even faster subsequent runs
+```bash
+# Run affected tests with one command
+scopetest affected -x "jest --runTestsByPath {} --colors"
+```
 
-## Installation
+## Why?
+
+In large monorepos, running all tests is slow. `scopetest` analyzes your dependency graph and runs only tests affected by your changes—cutting CI time from minutes to seconds.
+
+## Install
 
 ```bash
 npm install -g scopetest-cli
-# or
-npx scopetest-cli affected --base main
 ```
 
-## Quick Start
+## Usage
 
 ```bash
-# Find tests affected by changes on current branch vs main
+# Find affected tests
 scopetest affected --base main
 
-# Output as Jest paths (default)
-scopetest affected --base main --format jest
-# Output: path/to/Button.spec.ts path/to/Header.spec.ts
+# Execute tests directly
+scopetest affected -x "jest --runTestsByPath {}"
+scopetest affected -x "vitest run {}"
 
-# Run only affected tests (recommended - exact matching, faster)
-jest --runTestsByPath $(scopetest affected --base main)
+# Get affected source files instead
+scopetest affected --sources
 
-# JSON output with stats
-scopetest affected --base main --format json
+# Different output formats
+scopetest affected -f list    # newline-separated
+scopetest affected -f json    # full stats
 ```
 
-## Commands
+### Commands
 
-### `affected`
+**`affected`** - Find tests affected by changes
 
-Find tests affected by changes between current branch and base.
-
-```bash
-scopetest affected [OPTIONS]
-
+```
 Options:
-  -b, --base <REF>      Base branch/commit to compare against
-  -f, --format <FMT>    Output format: jest, json, list, paths, coverage [default: jest]
-      --no-cache        Skip cache, force full rebuild
-  -r, --root <PATH>     Project root directory
+  -b, --base <REF>     Git ref to compare against (branch, commit, tag)
+  -f, --format <FMT>   Output: paths, list, json [default: paths]
+  -x, --exec <CMD>     Execute command with {} replaced by affected files
+      --sources        Output affected source files instead of tests
+      --no-cache       Skip cache, force rebuild
+  -r, --root <PATH>    Project root directory
 ```
 
-### `build`
+**`build`** - Rebuild dependency graph cache
 
-Build/rebuild the dependency graph cache.
-
-```bash
-scopetest build [OPTIONS]
-
-Options:
-  -r, --root <PATH>     Project root directory
 ```
-
-### `coverage`
-
-Output coverage scope for affected files.
-
-```bash
-scopetest coverage [OPTIONS]
-
 Options:
-  -b, --base <REF>      Base branch/commit
-  -t, --threshold <N>   Coverage threshold percentage [default: 80]
-      --threshold-config Output threshold config instead of file list
-  -r, --root <PATH>     Project root directory
+  -r, --root <PATH>    Project root directory
 ```
 
 ## Output Formats
 
 | Format | Description | Example |
 |--------|-------------|---------|
-| `jest` | Space-separated paths for `--runTestsByPath` | `src/a.spec.ts src/b.spec.ts` |
-| `list` | Newline-separated paths | `src/a.spec.ts\nsrc/b.spec.ts` |
-| `json` | JSON with tests, sources, and stats | `{"tests": [...], "stats": {...}}` |
-| `coverage` | Comma-separated source files | `src/a.ts,src/b.ts` |
+| `paths` | Space-separated (default) | `src/a.spec.ts src/b.spec.ts` |
+| `list` | Newline-separated | `src/a.spec.ts`<br>`src/b.spec.ts` |
+| `json` | Full stats | `{"tests": [...], "stats": {...}}` |
+
+Aliases: `jest` and `vitest` both map to `paths`.
 
 ## Configuration
 
-Create `.scopetestrc.json` in your project root:
+Create `.scopetestrc.json`:
 
 ```json
 {
-  "testPatterns": [
-    "**/*.spec.ts",
-    "**/*.spec.tsx",
-    "**/*.test.ts",
-    "**/*.test.tsx"
-  ],
-  "ignorePatterns": [
-    "**/node_modules/**",
-    "**/dist/**",
-    "**/build/**",
-    "**/.git/**"
-  ],
+  "testPatterns": ["**/*.spec.ts", "**/*.test.ts"],
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**"],
   "extensions": [".ts", ".tsx", ".js", ".jsx"]
 }
 ```
 
-## CI Integration
+## CI Examples
 
 ### GitHub Actions
 
 ```yaml
 - name: Run affected tests
-  run: |
-    AFFECTED=$(npx scopetest-cli affected --base origin/main)
-    if [ -n "$AFFECTED" ]; then
-      jest --runTestsByPath $AFFECTED
-    else
-      echo "No affected tests"
-    fi
+  run: npx scopetest-cli affected -b origin/main -x "jest --runTestsByPath {} --colors"
 ```
 
-### Jenkins / Other CI
+### Jenkins
 
 ```bash
-AFFECTED=$(npx scopetest-cli affected --base origin/master)
-if [ -n "$AFFECTED" ]; then
-  npx jest --runTestsByPath $AFFECTED
-fi
+npx scopetest-cli affected -b origin/master -x "npx jest --runTestsByPath {} --colors"
+```
+
+### Manual (pipe style)
+
+```bash
+jest --runTestsByPath $(scopetest affected -b main)
 ```
 
 ## How It Works
 
-1. **Parse** - Uses [oxc](https://oxc.rs) to parse all JS/TS files and extract imports
-2. **Graph** - Builds a dependency graph using [petgraph](https://docs.rs/petgraph)
-3. **Diff** - Gets changed files from `git diff`
-4. **Traverse** - Finds all files that transitively depend on changed files
-5. **Filter** - Returns only test files from the affected set
+1. Parses all JS/TS files using [oxc](https://oxc.rs)
+2. Builds a dependency graph with [petgraph](https://docs.rs/petgraph)
+3. Gets changed files from `git diff`
+4. Traverses graph to find all affected files
+5. Filters to test files only
 
 ## Performance
 
-Tested on a real monorepo with 12,500+ files:
-- Initial build: ~3 seconds
-- Cached run: ~200ms
+On a 12,500+ file monorepo:
+- Initial build: ~3s
+- Cached: ~200ms
 
-## Supported Import Syntax
+## Supported Imports
 
-- ES6 imports: `import x from 'y'`, `import { x } from 'y'`
-- Dynamic imports: `import('path')`
+- ES6: `import x from 'y'`
+- Dynamic: `import('path')`
 - CommonJS: `require('path')`
-- Re-exports: `export * from 'y'`, `export { x } from 'y'`
-- Parent directory imports: `import { x } from '..'`
-- TypeScript path aliases via `tsconfig.json`
-- Workspace package resolution via symlinks
+- Re-exports: `export * from 'y'`
+- TypeScript path aliases
+- Workspace packages
 
 ## License
 

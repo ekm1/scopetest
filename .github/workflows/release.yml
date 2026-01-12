@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.2)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -91,8 +97,12 @@ jobs:
           
       - name: Update version in package.json
         run: |
-          VERSION=${{ github.ref_name }}
-          VERSION=${VERSION#v}
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=${{ github.ref_name }}
+            VERSION=${VERSION#v}
+          fi
           jq ".version = \"$VERSION\"" package.json > tmp.json && mv tmp.json package.json
           
       - name: Publish to npm
@@ -103,5 +113,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.ref_name }}
           files: binaries/*
           generate_release_notes: true
