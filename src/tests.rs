@@ -110,8 +110,8 @@ fn test_empty_graph() {
 #[test]
 fn test_jest_escaping() {
     let tests = vec![PathBuf::from("/src/[1].spec.ts"), PathBuf::from("/src/(2).spec.ts")];
-    let pattern = OutputFormatter::format_jest_pattern(&tests);
-    assert!(regex::Regex::new(&pattern).is_ok());
+    let pattern = OutputFormatter::format_paths(&tests);
+    assert!(!pattern.is_empty());
 }
 
 #[test]

@@ -37,6 +37,15 @@ scopetest affected --sources
 # Different output formats
 scopetest affected -f list    # newline-separated
 scopetest affected -f json    # full stats
+
+# Changes since a specific commit
+scopetest affected --since HEAD~5
+
+# Stop on first failure
+scopetest affected -x "jest --runTestsByPath {}" --fail-fast
+
+# Run all tests if too many affected (blast radius protection)
+scopetest affected -x "jest --runTestsByPath {}" --threshold 100
 ```
 
 ### Commands
@@ -45,12 +54,35 @@ scopetest affected -f json    # full stats
 
 ```
 Options:
-  -b, --base <REF>     Git ref to compare against (branch, commit, tag)
-  -f, --format <FMT>   Output: paths, list, json [default: paths]
-  -x, --exec <CMD>     Execute command with {} replaced by affected files
-      --sources        Output affected source files instead of tests
-      --no-cache       Skip cache, force rebuild
-  -r, --root <PATH>    Project root directory
+  -b, --base <REF>       Git ref to compare against (branch, commit, tag)
+      --since <REF>      Find changes since this commit (commit..HEAD range)
+  -f, --format <FMT>     Output: paths, list, json [default: paths]
+  -x, --exec <CMD>       Execute command with {} replaced by affected files
+      --fail-fast        Stop on first test failure (only with --exec)
+      --threshold <N>    If affected tests exceed N, use all tests instead
+      --sources          Output affected source files instead of tests
+      --no-cache         Skip cache, force rebuild
+  -r, --root <PATH>      Project root directory
+```
+
+**`why`** - Explain why a test is affected
+
+```bash
+# See why a specific test is in the affected set
+scopetest why src/utils/calc.spec.ts
+
+# Show all dependency paths, not just shortest
+scopetest why src/utils/calc.spec.ts --all
+```
+
+```
+Options:
+  <TEST>                 The test file to explain
+  -b, --base <REF>       Git ref to compare against
+      --since <REF>      Find changes since this commit
+      --all              Show all paths, not just the shortest
+  -r, --root <PATH>      Project root directory
+      --no-cache         Skip cache, force rebuild
 ```
 
 **`build`** - Rebuild dependency graph cache
@@ -89,6 +121,10 @@ Create `.scopetestrc.json`:
 ```yaml
 - name: Run affected tests
   run: npx scopetest-cli affected -b origin/main -x "jest --runTestsByPath {} --colors"
+
+# With blast radius protection (threshold exceeded = run all tests)
+- name: Run affected tests (with threshold)
+  run: npx scopetest-cli affected -b origin/main -x "jest --runTestsByPath {}" --threshold 500
 ```
 
 ### Jenkins
@@ -114,7 +150,7 @@ jest --runTestsByPath $(scopetest affected -b main)
 ## Performance
 
 On a 12,500+ file monorepo:
-- Initial build: ~3s
+- Initial build: ~20-30s
 - Cached: ~200ms
 
 ## Supported Imports

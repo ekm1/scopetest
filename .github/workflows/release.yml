@@ -95,7 +95,8 @@ jobs:
       - name: Make binaries executable
         run: chmod +x binaries/*
           
-      - name: Update version in package.json
+      - name: Determine version
+        id: version
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
             VERSION="${{ github.event.inputs.version }}"
@@ -103,7 +104,21 @@ jobs:
             VERSION=${{ github.ref_name }}
             VERSION=${VERSION#v}
           fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update version in package.json and Cargo.toml
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
           jq ".version = \"$VERSION\"" package.json > tmp.json && mv tmp.json package.json
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json Cargo.toml
+          git diff --cached --quiet || git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }}"
+          git push origin HEAD:master
           
       - name: Publish to npm
         env:

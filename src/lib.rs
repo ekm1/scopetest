@@ -15,4 +15,4 @@ mod tests;
 pub use graph::{DependencyGraph, FileId, FileNode};
 pub use parser::{ImportInfo, ImportType};
 pub use config::Config;
-pub use affected::AffectedResult;
+pub use affected::{AffectedResult, DependencyPath};

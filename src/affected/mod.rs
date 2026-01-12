@@ -1,13 +1,28 @@
-use std::path::PathBuf;
-use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::collections::{HashSet, VecDeque};
 
-use crate::graph::DependencyGraph;
+use crate::graph::{DependencyGraph, FileId};
 use crate::git::ChangeSet;
 
 #[derive(Debug, Default)]
 pub struct AffectedResult {
     pub tests: Vec<PathBuf>,
     pub sources: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DependencyPath {
+    pub chain: Vec<PathBuf>,
+}
+
+impl DependencyPath {
+    pub fn format(&self) -> String {
+        self.chain
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(" → ")
+    }
 }
 
 pub struct AffectedTestFinder<'a> {
@@ -59,6 +74,103 @@ impl<'a> AffectedTestFinder<'a> {
         sources.sort();
 
         AffectedResult { tests, sources }
+    }
+
+    pub fn find_why(&self, test_path: &Path, changes: &ChangeSet) -> Option<DependencyPath> {
+        let test_id = self.graph.get_file_id(test_path)?;
+        
+        let changed_ids: HashSet<_> = changes
+            .all_changed()
+            .iter()
+            .filter_map(|p| self.graph.get_file_id(p))
+            .collect();
+
+        if changed_ids.is_empty() {
+            return None;
+        }
+
+        let mut queue: VecDeque<(FileId, Vec<FileId>)> = VecDeque::new();
+        let mut visited: HashSet<FileId> = HashSet::new();
+
+        queue.push_back((test_id, vec![test_id]));
+        visited.insert(test_id);
+
+        while let Some((current, path)) = queue.pop_front() {
+            if changed_ids.contains(&current) {
+                let chain: Vec<PathBuf> = path
+                    .iter()
+                    .filter_map(|&id| self.graph.get_file_path(id).map(|p| p.to_path_buf()))
+                    .collect();
+                return Some(DependencyPath { chain });
+            }
+
+            for dep in self.graph.get_dependencies(current) {
+                if !visited.contains(&dep) {
+                    visited.insert(dep);
+                    let mut new_path = path.clone();
+                    new_path.push(dep);
+                    queue.push_back((dep, new_path));
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn find_all_paths_to_test(&self, test_path: &Path, changes: &ChangeSet) -> Vec<DependencyPath> {
+        let test_id = match self.graph.get_file_id(test_path) {
+            Some(id) => id,
+            None => return vec![],
+        };
+
+        let changed_ids: HashSet<_> = changes
+            .all_changed()
+            .iter()
+            .filter_map(|p| self.graph.get_file_id(p))
+            .collect();
+
+        if changed_ids.is_empty() {
+            return vec![];
+        }
+
+        let mut paths = Vec::new();
+
+        for &changed_id in &changed_ids {
+            if let Some(path) = self.find_path_between(changed_id, test_id) {
+                paths.push(path);
+            }
+        }
+
+        paths
+    }
+
+    fn find_path_between(&self, from: FileId, to: FileId) -> Option<DependencyPath> {
+        let mut queue: VecDeque<(FileId, Vec<FileId>)> = VecDeque::new();
+        let mut visited: HashSet<FileId> = HashSet::new();
+
+        queue.push_back((from, vec![from]));
+        visited.insert(from);
+
+        while let Some((current, path)) = queue.pop_front() {
+            if current == to {
+                let chain: Vec<PathBuf> = path
+                    .iter()
+                    .filter_map(|&id| self.graph.get_file_path(id).map(|p| p.to_path_buf()))
+                    .collect();
+                return Some(DependencyPath { chain });
+            }
+
+            for dep in self.graph.get_dependents(current) {
+                if !visited.contains(&dep) {
+                    visited.insert(dep);
+                    let mut new_path = path.clone();
+                    new_path.push(dep);
+                    queue.push_back((dep, new_path));
+                }
+            }
+        }
+
+        None
     }
 
     pub fn get_totals(&self) -> (usize, usize) {
