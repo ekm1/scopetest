@@ -4,40 +4,39 @@ const { execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const PLATFORMS = {
-  'darwin-arm64': '@scopetest/darwin-arm64',
-  'darwin-x64': '@scopetest/darwin-x64',
-  'linux-x64': '@scopetest/linux-x64-gnu',
-  'linux-arm64': '@scopetest/linux-arm64-gnu',
-  'win32-x64': '@scopetest/win32-x64-msvc',
+const BINARIES = {
+  'darwin-arm64': 'scopetest-darwin-arm64',
+  'darwin-x64': 'scopetest-darwin-x64',
+  'linux-x64': 'scopetest-linux-x64',
+  'linux-arm64': 'scopetest-linux-arm64',
+  'win32-x64': 'scopetest-win32-x64.exe',
 };
 
 function getBinaryPath() {
-  const platform = process.platform;
-  const arch = process.arch;
-  const key = `${platform}-${arch}`;
-  const pkg = PLATFORMS[key];
+  const key = `${process.platform}-${process.arch}`;
+  const binaryName = BINARIES[key];
 
-  if (!pkg) {
-    console.error(`Unsupported platform: ${platform}-${arch}`);
+  if (!binaryName) {
+    console.error(`Unsupported platform: ${process.platform}-${process.arch}`);
+    console.error('Supported: darwin-arm64, darwin-x64, linux-x64, linux-arm64, win32-x64');
     process.exit(1);
   }
 
-  try {
-    const ext = platform === 'win32' ? '.exe' : '';
-    return require.resolve(`${pkg}/scopetest${ext}`);
-  } catch {
-    console.error(`Binary not found for ${platform}-${arch}`);
-    console.error('Try reinstalling: npm install -g scopetest');
+  const binaryPath = path.join(__dirname, '..', 'binaries', binaryName);
+  
+  if (!fs.existsSync(binaryPath)) {
+    console.error(`Binary not found: ${binaryPath}`);
+    console.error('Try reinstalling: npm install scopetest');
     process.exit(1);
   }
+
+  return binaryPath;
 }
 
 const binary = getBinaryPath();
-const args = process.argv.slice(2);
 
 try {
-  execFileSync(binary, args, { stdio: 'inherit' });
+  execFileSync(binary, process.argv.slice(2), { stdio: 'inherit' });
 } catch (err) {
   process.exit(err.status || 1);
 }

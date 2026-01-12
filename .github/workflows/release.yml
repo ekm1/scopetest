@@ -18,24 +18,19 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            npm-pkg: linux-x64-gnu
-            binary: scopetest
+            binary-name: scopetest-linux-x64
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            npm-pkg: linux-arm64-gnu
-            binary: scopetest
+            binary-name: scopetest-linux-arm64
           - os: macos-latest
             target: x86_64-apple-darwin
-            npm-pkg: darwin-x64
-            binary: scopetest
+            binary-name: scopetest-darwin-x64
           - os: macos-latest
             target: aarch64-apple-darwin
-            npm-pkg: darwin-arm64
-            binary: scopetest
+            binary-name: scopetest-darwin-arm64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            npm-pkg: win32-x64-msvc
-            binary: scopetest.exe
+            binary-name: scopetest-win32-x64.exe
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -57,18 +52,21 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           
-      - name: Package npm binary
+      - name: Rename binary
         shell: bash
         run: |
-          mkdir -p npm-pkg
-          cp target/${{ matrix.target }}/release/${{ matrix.binary }} npm-pkg/
-          echo '{"name":"@scopetest/${{ matrix.npm-pkg }}","version":"${{ github.ref_name }}","os":["${{ matrix.os == 'windows-latest' && 'win32' || (matrix.os == 'macos-latest' && 'darwin' || 'linux') }}"],"cpu":["${{ contains(matrix.target, 'aarch64') && 'arm64' || 'x64' }}"]}' > npm-pkg/package.json
+          mkdir -p binaries
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/${{ matrix.target }}/release/scopetest.exe binaries/${{ matrix.binary-name }}
+          else
+            cp target/${{ matrix.target }}/release/scopetest binaries/${{ matrix.binary-name }}
+          fi
           
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: npm-${{ matrix.npm-pkg }}
-          path: npm-pkg/
+          name: ${{ matrix.binary-name }}
+          path: binaries/${{ matrix.binary-name }}
 
   publish:
     needs: build
@@ -85,28 +83,19 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts/
+          path: binaries/
+          merge-multiple: true
+          
+      - name: Make binaries executable
+        run: chmod +x binaries/*
           
       - name: Update version in package.json
         run: |
           VERSION=${{ github.ref_name }}
           VERSION=${VERSION#v}
           jq ".version = \"$VERSION\"" package.json > tmp.json && mv tmp.json package.json
-          for pkg in artifacts/npm-*/package.json; do
-            jq ".version = \"$VERSION\"" "$pkg" > tmp.json && mv tmp.json "$pkg"
-          done
           
-      - name: Publish platform packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          for dir in artifacts/npm-*/; do
-            cd "$dir"
-            npm publish --access public
-            cd -
-          done
-          
-      - name: Publish main package
+      - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public
@@ -114,6 +103,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            artifacts/npm-*/scopetest*
+          files: binaries/*
           generate_release_notes: true
