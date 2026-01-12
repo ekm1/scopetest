@@ -82,7 +82,6 @@ Options:
 |--------|-------------|---------|
 | `jest` | Space-separated paths for `--runTestsByPath` | `src/a.spec.ts src/b.spec.ts` |
 | `list` | Newline-separated paths | `src/a.spec.ts\nsrc/b.spec.ts` |
-| `paths` | Space-separated paths | `src/a.spec.ts src/b.spec.ts` |
 | `json` | JSON with tests, sources, and stats | `{"tests": [...], "stats": {...}}` |
 | `coverage` | Comma-separated source files | `src/a.ts,src/b.ts` |
 

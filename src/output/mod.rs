@@ -6,7 +6,6 @@ pub enum OutputFormat {
     Jest,
     Json,
     List,
-    Paths,
     Coverage,
 }
 
@@ -18,7 +17,6 @@ impl std::str::FromStr for OutputFormat {
             "jest" => Ok(OutputFormat::Jest),
             "json" => Ok(OutputFormat::Json),
             "list" => Ok(OutputFormat::List),
-            "paths" => Ok(OutputFormat::Paths),
             "coverage" => Ok(OutputFormat::Coverage),
             _ => Err(format!("Unknown format: {}", s)),
         }
@@ -99,14 +97,6 @@ impl OutputFormatter {
             .filter_map(|p| p.to_str())
             .collect::<Vec<_>>()
             .join("\n")
-    }
-
-    pub fn format_paths(files: &[PathBuf]) -> String {
-        files
-            .iter()
-            .filter_map(|p| p.to_str())
-            .collect::<Vec<_>>()
-            .join(" ")
     }
 
     pub fn format_coverage_from(sources: &[PathBuf]) -> String {
