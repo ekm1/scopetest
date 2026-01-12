@@ -1,4 +1,4 @@
-# scopetest
+# scopetest-cli
 
 A blazing-fast smart test selector for JavaScript/TypeScript monorepos. Only run tests affected by your changes.
 
@@ -13,9 +13,9 @@ A blazing-fast smart test selector for JavaScript/TypeScript monorepos. Only run
 ## Installation
 
 ```bash
-npm install -g scopetest
+npm install -g scopetest-cli
 # or
-npx scopetest affected
+npx scopetest-cli affected --base main
 ```
 
 ## Quick Start
@@ -45,10 +45,10 @@ Find tests affected by changes between current branch and base.
 scopetest affected [OPTIONS]
 
 Options:
-  -b, --base <REF>      Base branch/commit to compare against [default: main]
+  -b, --base <REF>      Base branch/commit to compare against
   -f, --format <FMT>    Output format: jest, json, list [default: jest]
       --no-cache        Skip cache, force full rebuild
-  -c, --config <PATH>   Path to config file
+  -r, --root <PATH>     Project root directory
 ```
 
 ### `build`
@@ -59,7 +59,7 @@ Build/rebuild the dependency graph cache.
 scopetest build [OPTIONS]
 
 Options:
-  -c, --config <PATH>   Path to config file
+  -r, --root <PATH>     Project root directory
 ```
 
 ### `coverage`
@@ -70,9 +70,8 @@ Output coverage scope for affected files.
 scopetest coverage [OPTIONS]
 
 Options:
-  -b, --base <REF>      Base branch/commit [default: main]
-  -f, --format <FMT>    Output format: list, json, threshold [default: list]
-  -t, --threshold <N>   Coverage threshold percentage [default: 80]
+  -b, --base <REF>      Base branch/commit
+  -f, --format <FMT>    Output format: list, json [default: list]
 ```
 
 ## Configuration
@@ -93,8 +92,7 @@ Create `.scopetestrc.json` in your project root:
     "**/build/**",
     "**/.git/**"
   ],
-  "extensions": [".ts", ".tsx", ".js", ".jsx"],
-  "tsconfig": "tsconfig.json"
+  "extensions": [".ts", ".tsx", ".js", ".jsx"]
 }
 ```
 
@@ -105,25 +103,21 @@ Create `.scopetestrc.json` in your project root:
 ```yaml
 - name: Run affected tests
   run: |
-    npm install -g scopetest
-    AFFECTED=$(scopetest affected --base origin/main)
-    if [ -n "$AFFECTED" ]; then
+    AFFECTED=$(npx scopetest-cli affected --base origin/main)
+    if [ -n "$AFFECTED" ] && [ "$AFFECTED" != "^$" ]; then
       jest --testPathPattern="$AFFECTED"
     else
       echo "No affected tests"
     fi
 ```
 
-### With Coverage
+### Jenkins / Other CI
 
-```yaml
-- name: Run affected tests with coverage
-  run: |
-    AFFECTED=$(scopetest affected --base origin/main)
-    COVERAGE_SCOPE=$(scopetest coverage --base origin/main --format list)
-    if [ -n "$AFFECTED" ]; then
-      jest --testPathPattern="$AFFECTED" --coverage --collectCoverageFrom="$COVERAGE_SCOPE"
-    fi
+```bash
+AFFECTED=$(npx scopetest-cli affected --base origin/master)
+if [ -n "$AFFECTED" ] && [ "$AFFECTED" != "^$" ]; then
+  npm test -- --testPathPattern="$AFFECTED"
+fi
 ```
 
 ## How It Works
@@ -136,10 +130,9 @@ Create `.scopetestrc.json` in your project root:
 
 ## Performance
 
-Tested on a real monorepo with 12,569 files:
+Tested on a real monorepo with 12,500+ files:
 - Initial build: ~3 seconds
 - Cached run: ~200ms
-- Found 1,496 affected tests from branch changes
 
 ## Supported Import Syntax
 
@@ -147,7 +140,9 @@ Tested on a real monorepo with 12,569 files:
 - Dynamic imports: `import('path')`
 - CommonJS: `require('path')`
 - Re-exports: `export * from 'y'`, `export { x } from 'y'`
+- Parent directory imports: `import { x } from '..'`
 - TypeScript path aliases via `tsconfig.json`
+- Workspace package resolution via symlinks
 
 ## License
 

@@ -72,7 +72,8 @@ impl PathResolver {
         if import_path.starts_with('.') || import_path.starts_with('/') {
             let from_dir = from.parent().unwrap_or(Path::new("."));
             let base_path = from_dir.join(import_path);
-            return self.resolve_with_extensions(&base_path);
+            let normalized = self.normalize_path(&base_path);
+            return self.resolve_with_extensions(&normalized);
         }
 
         if let Some(resolved) = self.resolve_alias(import_path) {
@@ -212,6 +213,22 @@ impl PathResolver {
 
         Err(ResolveError::NotFound(base_path.display().to_string()))
     }
+
+    fn normalize_path(&self, path: &Path) -> PathBuf {
+        let mut components = Vec::new();
+        for component in path.components() {
+            match component {
+                std::path::Component::ParentDir => {
+                    if !components.is_empty() {
+                        components.pop();
+                    }
+                }
+                std::path::Component::CurDir => {}
+                c => components.push(c),
+            }
+        }
+        components.iter().collect()
+    }
 }
 
 #[cfg(test)]
@@ -251,3 +268,26 @@ mod tests {
         assert!(result.unwrap().ends_with("index.ts"));
     }
 }
+
+
+    #[test]
+    fn test_resolve_parent_dir_import() {
+        use tempfile::TempDir;
+        use std::fs;
+        
+        let temp = TempDir::new().unwrap();
+        let src = temp.path().join("src");
+        let component = src.join("Component");
+        let tests = component.join("__tests__");
+        fs::create_dir_all(&tests).unwrap();
+        
+        fs::write(component.join("index.tsx"), "export const Component = () => {};").unwrap();
+        fs::write(tests.join("index.spec.tsx"), "import { Component } from '..';").unwrap();
+
+        let resolver = PathResolver::new(temp.path().to_path_buf());
+        let result = resolver.resolve(&tests.join("index.spec.tsx"), "..");
+        
+        assert!(result.is_ok(), "Failed to resolve: {:?}", result);
+        let resolved = result.unwrap();
+        assert!(resolved.ends_with("index.tsx"), "Expected index.tsx, got {:?}", resolved);
+    }

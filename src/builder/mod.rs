@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::config::Config;
 use crate::graph::DependencyGraph;
-use crate::parser::{self, ImportType};
+use crate::parser::{self};
 use crate::resolver::PathResolver;
 
 #[derive(Error, Debug)]
@@ -67,11 +67,9 @@ impl GraphBuilder {
                 
                 for import in imports {
                     if let Ok(resolved) = self.resolver.resolve(&file, &import.source) {
-                        if import.import_type == ImportType::ReExport {
-                            if let Some(to_id) = g.get_file_id(&resolved) {
-                                g.add_dependency(from_id, to_id);
-                            }
-                        } else if let Some(to_id) = g.get_file_id(&resolved) {
+                        let canonical_resolved = std::fs::canonicalize(&resolved).unwrap_or(resolved);
+                        
+                        if let Some(to_id) = g.get_file_id(&canonical_resolved) {
                             g.add_dependency(from_id, to_id);
                         }
                     }

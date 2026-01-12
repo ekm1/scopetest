@@ -194,4 +194,12 @@ mod tests {
         "#);
         assert_eq!(imports.len(), 4);
     }
+
+    #[test]
+    fn test_parent_dir_import() {
+        let imports = parse_ts(r#"import { AppPopUps } from "..";"#);
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports[0].source, "..");
+        assert_eq!(imports[0].import_type, ImportType::StaticImport);
+    }
 }
