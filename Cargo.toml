@@ -1,0 +1,51 @@
+[package]
+name = "scopetest"
+version = "0.1.0"
+edition = "2021"
+description = "Smart test selector - run only tests affected by code changes"
+license = "MIT"
+repository = "https://github.com/ekm1/scopetest"
+homepage = "https://github.com/ekm1/scopetest"
+readme = "README.md"
+keywords = ["testing", "jest", "monorepo", "ci", "rust"]
+categories = ["development-tools::testing", "command-line-utilities"]
+exclude = [".github/", "npm/", "bin/"]
+
+[[bin]]
+name = "scopetest"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4.4", features = ["derive"] }
+
+# Parsing
+oxc_parser = "0.56"
+oxc_allocator = "0.56"
+oxc_ast = "0.56"
+oxc_span = "0.56"
+
+# Graph
+petgraph = { version = "0.6", features = ["serde-1"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# File system
+glob = "0.3"
+ignore = "0.4"
+walkdir = "2.4"
+
+# Parallelism
+rayon = "1.8"
+
+# Utilities
+thiserror = "1.0"
+anyhow = "1.0"
+regex = "1.10"
+
+[dev-dependencies]
+proptest = "1.4"
+tempfile = "3.10"

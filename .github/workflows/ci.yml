@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Run tests
+        run: cargo test --lib
+        
+      - name: Check formatting
+        run: cargo fmt --check
+        
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+  build:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            npm-pkg: linux-x64-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            npm-pkg: linux-arm64-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            npm-pkg: darwin-x64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            npm-pkg: darwin-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            npm-pkg: win32-x64-msvc
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+          
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scopetest-${{ matrix.npm-pkg }}
+          path: |
+            target/${{ matrix.target }}/release/scopetest
+            target/${{ matrix.target }}/release/scopetest.exe

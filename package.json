@@ -1,0 +1,39 @@
+{
+  "name": "scopetest",
+  "version": "0.1.0",
+  "description": "Smart test selector - run only tests affected by code changes",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ekm1/scopetest"
+  },
+  "keywords": [
+    "testing",
+    "jest",
+    "monorepo",
+    "ci",
+    "rust",
+    "typescript",
+    "javascript"
+  ],
+  "bin": {
+    "scopetest": "bin/scopetest"
+  },
+  "files": [
+    "bin",
+    "npm"
+  ],
+  "scripts": {
+    "postinstall": "node npm/install.js"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "optionalDependencies": {
+    "@scopetest/darwin-arm64": "0.1.0",
+    "@scopetest/darwin-x64": "0.1.0",
+    "@scopetest/linux-x64-gnu": "0.1.0",
+    "@scopetest/linux-arm64-gnu": "0.1.0",
+    "@scopetest/win32-x64-msvc": "0.1.0"
+  }
+}

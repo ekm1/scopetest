@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            npm-pkg: linux-x64-gnu
+            binary: scopetest
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            npm-pkg: linux-arm64-gnu
+            binary: scopetest
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            npm-pkg: darwin-x64
+            binary: scopetest
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            npm-pkg: darwin-arm64
+            binary: scopetest
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            npm-pkg: win32-x64-msvc
+            binary: scopetest.exe
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+          
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          
+      - name: Package npm binary
+        shell: bash
+        run: |
+          mkdir -p npm-pkg
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} npm-pkg/
+          echo '{"name":"@scopetest/${{ matrix.npm-pkg }}","version":"${{ github.ref_name }}","os":["${{ matrix.os == 'windows-latest' && 'win32' || (matrix.os == 'macos-latest' && 'darwin' || 'linux') }}"],"cpu":["${{ contains(matrix.target, 'aarch64') && 'arm64' || 'x64' }}"]}' > npm-pkg/package.json
+          
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-${{ matrix.npm-pkg }}
+          path: npm-pkg/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          
+      - name: Update version in package.json
+        run: |
+          VERSION=${{ github.ref_name }}
+          VERSION=${VERSION#v}
+          jq ".version = \"$VERSION\"" package.json > tmp.json && mv tmp.json package.json
+          for pkg in artifacts/npm-*/package.json; do
+            jq ".version = \"$VERSION\"" "$pkg" > tmp.json && mv tmp.json "$pkg"
+          done
+          
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for dir in artifacts/npm-*/; do
+            cd "$dir"
+            npm publish --access public
+            cd -
+          done
+          
+      - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+        
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/npm-*/scopetest*
+          generate_release_notes: true
