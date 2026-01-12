@@ -1,5 +1,5 @@
 {
-  "name": "scopetest",
+  "name": "scopetest-cli",
   "version": "0.1.0",
   "description": "Smart test selector - run only tests affected by code changes",
   "license": "MIT",
