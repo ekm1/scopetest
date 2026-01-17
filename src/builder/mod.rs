@@ -8,6 +8,7 @@ use crate::config::Config;
 use crate::graph::DependencyGraph;
 use crate::parser::{self};
 use crate::resolver::PathResolver;
+use crate::barrel::BarrelAnalyzer;
 
 #[derive(Error, Debug)]
 pub enum BuildError {
@@ -38,6 +39,7 @@ impl GraphBuilder {
     pub fn build(&self) -> Result<DependencyGraph, BuildError> {
         let files = self.discover_files()?;
         let graph = Arc::new(Mutex::new(DependencyGraph::new()));
+        let barrel_analyzer = Arc::new(Mutex::new(BarrelAnalyzer::new(self.root.clone())));
         
         {
             let mut g = graph.lock().unwrap();
@@ -62,13 +64,35 @@ impl GraphBuilder {
 
         {
             let mut g = graph.lock().unwrap();
+            let mut analyzer = barrel_analyzer.lock().unwrap();
+            
             for (file, imports) in parse_results {
                 let from_id = g.get_file_id(&file).unwrap();
                 
                 for import in imports {
                     if let Ok(resolved) = self.resolver.resolve(&file, &import.source) {
-                        let canonical_resolved = std::fs::canonicalize(&resolved).unwrap_or(resolved);
+                        let canonical_resolved = std::fs::canonicalize(&resolved).unwrap_or(resolved.clone());
                         
+                        // Check if this is a barrel import with specific named imports
+                        if self.config.expand_barrels && !import.named_imports.is_empty() && !import.is_namespace {
+                            // Try to expand barrel imports to actual sources
+                            if analyzer.check_and_cache_barrel(&canonical_resolved) {
+                                let actual_sources = analyzer.resolve_barrel_imports(
+                                    &canonical_resolved,
+                                    &import.named_imports,
+                                );
+                                
+                                // Add edges to actual source files instead of barrel
+                                for (_name, source_path) in actual_sources {
+                                    if let Some(to_id) = g.get_file_id(&source_path) {
+                                        g.add_dependency(from_id, to_id);
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                        
+                        // Fallback: add edge to resolved path (non-barrel or namespace import)
                         if let Some(to_id) = g.get_file_id(&canonical_resolved) {
                             g.add_dependency(from_id, to_id);
                         }
@@ -144,11 +168,32 @@ impl GraphBuilder {
             })
             .collect();
 
+        let mut analyzer = BarrelAnalyzer::new(self.root.clone());
+
         for (file, imports) in parse_results {
             if let Some(from_id) = graph.get_file_id(&file) {
                 for import in imports {
                     if let Ok(resolved) = self.resolver.resolve(&file, &import.source) {
-                        if let Some(to_id) = graph.get_file_id(&resolved) {
+                        let canonical_resolved = std::fs::canonicalize(&resolved).unwrap_or(resolved.clone());
+                        
+                        // Check if this is a barrel import with specific named imports
+                        if self.config.expand_barrels && !import.named_imports.is_empty() && !import.is_namespace {
+                            if analyzer.check_and_cache_barrel(&canonical_resolved) {
+                                let actual_sources = analyzer.resolve_barrel_imports(
+                                    &canonical_resolved,
+                                    &import.named_imports,
+                                );
+                                
+                                for (_name, source_path) in actual_sources {
+                                    if let Some(to_id) = graph.get_file_id(&source_path) {
+                                        graph.add_dependency(from_id, to_id);
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                        
+                        if let Some(to_id) = graph.get_file_id(&canonical_resolved) {
                             graph.add_dependency(from_id, to_id);
                         }
                     }

@@ -18,6 +18,12 @@ pub enum ImportType {
 pub struct ImportInfo {
     pub source: String,
     pub import_type: ImportType,
+    /// Named imports (e.g., `{ Button, Input }` -> ["Button", "Input"])
+    pub named_imports: Vec<String>,
+    /// Whether this is a namespace import (import * as X)
+    pub is_namespace: bool,
+    /// Whether this has a default import
+    pub has_default: bool,
 }
 
 fn extract_imports_from_program(program: &Program) -> Vec<ImportInfo> {
@@ -26,16 +32,47 @@ fn extract_imports_from_program(program: &Program) -> Vec<ImportInfo> {
     for stmt in &program.body {
         match stmt {
             Statement::ImportDeclaration(decl) => {
+                let mut named_imports = Vec::new();
+                let mut is_namespace = false;
+                let mut has_default = false;
+                
+                if let Some(specifiers) = &decl.specifiers {
+                    for spec in specifiers {
+                        match spec {
+                            ImportDeclarationSpecifier::ImportSpecifier(s) => {
+                                named_imports.push(s.imported.name().to_string());
+                            }
+                            ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => {
+                                has_default = true;
+                            }
+                            ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
+                                is_namespace = true;
+                            }
+                        }
+                    }
+                }
+                
                 imports.push(ImportInfo {
                     source: decl.source.value.to_string(),
                     import_type: ImportType::StaticImport,
+                    named_imports,
+                    is_namespace,
+                    has_default,
                 });
             }
             Statement::ExportNamedDeclaration(decl) => {
                 if let Some(source) = &decl.source {
+                    let named_imports: Vec<String> = decl.specifiers
+                        .iter()
+                        .map(|s| s.local.name().to_string())
+                        .collect();
+                    
                     imports.push(ImportInfo {
                         source: source.value.to_string(),
                         import_type: ImportType::ReExport,
+                        named_imports,
+                        is_namespace: false,
+                        has_default: false,
                     });
                 }
             }
@@ -43,6 +80,9 @@ fn extract_imports_from_program(program: &Program) -> Vec<ImportInfo> {
                 imports.push(ImportInfo {
                     source: decl.source.value.to_string(),
                     import_type: ImportType::ReExport,
+                    named_imports: vec![],
+                    is_namespace: true, // export * is like namespace
+                    has_default: false,
                 });
             }
             Statement::ExpressionStatement(expr_stmt) => {
@@ -69,6 +109,9 @@ fn extract_imports_from_expression(expr: &Expression, imports: &mut Vec<ImportIn
                 imports.push(ImportInfo {
                     source: lit.value.to_string(),
                     import_type: ImportType::DynamicImport,
+                    named_imports: vec![],
+                    is_namespace: true, // dynamic imports are like namespace
+                    has_default: false,
                 });
             }
         }
@@ -80,6 +123,9 @@ fn extract_imports_from_expression(expr: &Expression, imports: &mut Vec<ImportIn
                             imports.push(ImportInfo {
                                 source: lit.value.to_string(),
                                 import_type: ImportType::Require,
+                                named_imports: vec![],
+                                is_namespace: true, // require is like namespace
+                                has_default: false,
                             });
                         }
                     }

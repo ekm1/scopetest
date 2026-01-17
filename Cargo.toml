@@ -24,6 +24,7 @@ oxc_parser = "0.56"
 oxc_allocator = "0.56"
 oxc_ast = "0.56"
 oxc_span = "0.56"
+oxc_codegen = "0.56"
 
 # Graph
 petgraph = { version = "0.6", features = ["serde-1"] }

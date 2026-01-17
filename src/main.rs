@@ -9,6 +9,7 @@ use scopetest::cache::CacheManager;
 use scopetest::git::GitChangeDetector;
 use scopetest::affected::AffectedTestFinder;
 use scopetest::output::{OutputFormat, OutputFormatter};
+use scopetest::barrel::{BarrelAnalyzer};
 
 #[derive(Parser)]
 #[command(name = "scopetest")]
@@ -58,6 +59,10 @@ enum Commands {
         /// If affected tests exceed this threshold, use all tests instead
         #[arg(long)]
         threshold: Option<usize>,
+
+        /// Disable barrel import expansion (use barrel file as dependency instead of actual sources)
+        #[arg(long)]
+        no_barrel_expand: bool,
     },
 
     /// Explain why a test is affected by changes
@@ -92,6 +97,36 @@ enum Commands {
         #[arg(short, long)]
         root: Option<PathBuf>,
     },
+
+    /// Analyze and rewrite barrel imports to direct imports
+    Barrel {
+        #[command(subcommand)]
+        action: BarrelAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum BarrelAction {
+    /// Analyze a barrel file and show its exports
+    Analyze {
+        /// Path to the barrel file (index.ts)
+        file: PathBuf,
+        
+        /// Project root directory
+        #[arg(short, long)]
+        root: Option<PathBuf>,
+    },
+    
+    /// Find all barrel files in a directory
+    Find {
+        /// Directory to search
+        #[arg(short, long)]
+        dir: Option<PathBuf>,
+        
+        /// Project root directory
+        #[arg(short, long)]
+        root: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -99,15 +134,18 @@ fn main() -> ExitCode {
 
     let result = match cli.command {
         Commands::Affected { 
-            base, since, format, sources, no_cache, root, exec, fail_fast, threshold 
+            base, since, format, sources, no_cache, root, exec, fail_fast, threshold, no_barrel_expand 
         } => {
-            run_affected(base, since, format, sources, no_cache, root, exec, fail_fast, threshold)
+            run_affected(base, since, format, sources, no_cache, root, exec, fail_fast, threshold, no_barrel_expand)
         }
         Commands::Why { test, base, since, root, no_cache, all } => {
             run_why(test, base, since, root, no_cache, all)
         }
         Commands::Build { root } => {
             run_build(root)
+        }
+        Commands::Barrel { action } => {
+            run_barrel(action)
         }
     };
 
@@ -151,9 +189,11 @@ fn run_affected(
     exec: Option<String>,
     fail_fast: bool,
     threshold: Option<usize>,
+    no_barrel_expand: bool,
 ) -> Result<ExitCode> {
     let root = get_root(root);
-    let config = Config::load(&root)?;
+    let mut config = Config::load(&root)?;
+    config.expand_barrels = !no_barrel_expand;
     let cache = CacheManager::new(&root);
 
     let graph = load_graph(&root, &config, &cache, no_cache)?;
@@ -364,4 +404,73 @@ fn run_build(root: Option<PathBuf>) -> Result<ExitCode> {
     eprintln!("Cache saved.");
 
     Ok(ExitCode::SUCCESS)
+}
+
+
+fn run_barrel(action: BarrelAction) -> Result<ExitCode> {
+    match action {
+        BarrelAction::Analyze { file, root } => {
+            let root = get_root(root);
+            let mut analyzer = BarrelAnalyzer::new(root);
+            
+            let file_path = if file.is_absolute() {
+                file
+            } else {
+                std::env::current_dir()?.join(&file)
+            };
+            
+            let exports = analyzer.analyze_barrel(&file_path);
+            
+            if exports.is_empty() {
+                eprintln!("No exports found in {}", file_path.display());
+                return Ok(ExitCode::SUCCESS);
+            }
+            
+            println!("Exports from {}:\n", file_path.display());
+            
+            let mut sorted: Vec<_> = exports.iter().collect();
+            sorted.sort_by_key(|(name, _)| *name);
+            
+            for (name, source) in sorted {
+                let source_display = source.source_path.display();
+                if let Some(ref orig) = source.original_name {
+                    println!("  {} (as {}) <- {}", name, orig, source_display);
+                } else {
+                    println!("  {} <- {}", name, source_display);
+                }
+            }
+            
+            println!("\nTotal: {} exports", exports.len());
+            Ok(ExitCode::SUCCESS)
+        }
+        
+        BarrelAction::Find { dir, root } => {
+            let root = get_root(root);
+            let search_dir = dir.unwrap_or(root.clone());
+            let mut analyzer = BarrelAnalyzer::new(root);
+            
+            let barrels = analyzer.find_barrels(&search_dir);
+            
+            if barrels.is_empty() {
+                eprintln!("No barrel files found in {}", search_dir.display());
+                return Ok(ExitCode::SUCCESS);
+            }
+            
+            println!("Found {} barrel files:\n", barrels.len());
+            
+            for barrel in &barrels {
+                let exports = analyzer.analyze_barrel(barrel);
+                let barrel_canonical = std::fs::canonicalize(barrel).unwrap_or(barrel.clone());
+                let re_exports: usize = exports.values()
+                    .filter(|s| s.source_path != barrel_canonical)
+                    .count();
+                
+                if re_exports > 0 {
+                    println!("  {} ({} re-exports)", barrel.display(), re_exports);
+                }
+            }
+            
+            Ok(ExitCode::SUCCESS)
+        }
+    }
 }

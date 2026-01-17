@@ -29,6 +29,9 @@ pub struct Config {
     
     #[serde(default = "default_base")]
     pub default_base: String,
+    
+    #[serde(default = "default_expand_barrels")]
+    pub expand_barrels: bool,
 }
 
 fn default_test_patterns() -> Vec<String> {
@@ -67,6 +70,7 @@ fn default_extensions() -> Vec<String> {
 
 fn default_cache_enabled() -> bool { true }
 fn default_base() -> String { "main".to_string() }
+fn default_expand_barrels() -> bool { true }
 
 impl Default for Config {
     fn default() -> Self {
@@ -76,6 +80,7 @@ impl Default for Config {
             extensions: default_extensions(),
             cache_enabled: default_cache_enabled(),
             default_base: default_base(),
+            expand_barrels: default_expand_barrels(),
         }
     }
 }
