@@ -109,7 +109,10 @@ impl GraphBuilder {
 
     pub fn update_incremental(&self, graph: &mut DependencyGraph) -> Result<usize, BuildError> {
         let stale_files = graph.get_stale_files();
-        let current_files = self.discover_files()?;
+        let current_files: Vec<PathBuf> = self.discover_files()?
+            .into_iter()
+            .map(|p| std::fs::canonicalize(&p).unwrap_or(p))
+            .collect();
         let current_set: std::collections::HashSet<_> = current_files.iter().collect();
         let existing_set: std::collections::HashSet<_> = graph.get_all_paths().into_iter().collect();
 
@@ -295,5 +298,106 @@ mod tests {
 
         assert_eq!(graph.file_count(), 3);
         assert!(graph.contains_file(&src.join("c.ts")));
+    }
+
+    #[test]
+    fn test_incremental_detects_modified_file() {
+        let temp = TempDir::new().unwrap();
+        let src = temp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        fs::write(src.join("a.ts"), "export const a = 1;").unwrap();
+        fs::write(src.join("b.ts"), "export const b = 2;").unwrap();
+
+        let builder = GraphBuilder::new(temp.path().to_path_buf(), Config::default());
+        let mut graph = builder.build().unwrap();
+
+        assert_eq!(graph.edge_count(), 0);
+
+        // Modify b.ts to import from a — mtime changes so it's stale
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        fs::write(src.join("b.ts"), r#"import { a } from './a'; export const b = a;"#).unwrap();
+
+        let updated = builder.update_incremental(&mut graph).unwrap();
+
+        assert!(updated > 0, "should detect modified file");
+        assert_eq!(graph.file_count(), 2);
+        assert!(graph.edge_count() > 0, "should have new dependency edge after modification");
+    }
+
+    #[test]
+    fn test_incremental_detects_deleted_file() {
+        let temp = TempDir::new().unwrap();
+        let src = temp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        fs::write(src.join("a.ts"), "export const a = 1;").unwrap();
+        fs::write(src.join("b.ts"), "export const b = 2;").unwrap();
+
+        let builder = GraphBuilder::new(temp.path().to_path_buf(), Config::default());
+        let mut graph = builder.build().unwrap();
+
+        assert_eq!(graph.file_count(), 2);
+
+        fs::remove_file(src.join("b.ts")).unwrap();
+
+        let updated = builder.update_incremental(&mut graph).unwrap();
+
+        assert!(updated > 0, "should detect deleted file");
+        assert_eq!(graph.file_count(), 1);
+        assert!(!graph.contains_file(&src.join("b.ts")));
+    }
+
+    #[test]
+    fn test_incremental_no_changes_returns_zero() {
+        let temp = TempDir::new().unwrap();
+        let src = temp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        fs::write(src.join("a.ts"), "export const a = 1;").unwrap();
+
+        let builder = GraphBuilder::new(temp.path().to_path_buf(), Config::default());
+        let mut graph = builder.build().unwrap();
+
+        // First incremental syncs any mtime drift from the build
+        let _ = builder.update_incremental(&mut graph).unwrap();
+
+        // Second call with no file changes should return 0
+        let updated = builder.update_incremental(&mut graph).unwrap();
+
+        assert_eq!(updated, 0, "no changes should return 0 on second incremental call");
+    }
+
+    #[test]
+    fn test_incremental_updates_dependencies_after_edit() {
+        let temp = TempDir::new().unwrap();
+        let src = temp.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        fs::write(src.join("a.ts"), "export const a = 1;").unwrap();
+        fs::write(src.join("b.ts"), "export const b = 2;").unwrap();
+        fs::write(src.join("test.spec.ts"), r#"import { b } from './b';"#).unwrap();
+
+        let builder = GraphBuilder::new(temp.path().to_path_buf(), Config::default());
+        let mut graph = builder.build().unwrap();
+
+        // test.spec.ts depends on b.ts, not a.ts
+        let test_id = graph.get_file_id(&std::fs::canonicalize(src.join("test.spec.ts")).unwrap()).unwrap();
+        let a_id = graph.get_file_id(&std::fs::canonicalize(src.join("a.ts")).unwrap()).unwrap();
+        let deps_before = graph.get_dependencies(test_id);
+        assert!(!deps_before.contains(&a_id), "test should not depend on a.ts initially");
+
+        // Change test to import from a instead of b
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        fs::write(src.join("test.spec.ts"), r#"import { a } from './a';"#).unwrap();
+
+        let updated = builder.update_incremental(&mut graph).unwrap();
+        assert!(updated > 0);
+
+        // Now test.spec.ts should depend on a.ts
+        let test_id = graph.get_file_id(&std::fs::canonicalize(src.join("test.spec.ts")).unwrap()).unwrap();
+        let a_id = graph.get_file_id(&std::fs::canonicalize(src.join("a.ts")).unwrap()).unwrap();
+        let deps_after = graph.get_dependencies(test_id);
+        assert!(deps_after.contains(&a_id), "test should depend on a.ts after edit");
     }
 }

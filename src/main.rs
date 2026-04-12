@@ -165,7 +165,14 @@ fn get_root(root: Option<PathBuf>) -> PathBuf {
 fn load_graph(root: &PathBuf, config: &Config, cache: &CacheManager, no_cache: bool) -> Result<scopetest::DependencyGraph> {
     if !no_cache && config.cache_enabled {
         match cache.load() {
-            Ok(Some(g)) => Ok(g),
+            Ok(Some(mut g)) => {
+                let builder = GraphBuilder::new(root.clone(), config.clone());
+                let updated = builder.update_incremental(&mut g)?;
+                if updated > 0 {
+                    let _ = cache.save(&g);
+                }
+                Ok(g)
+            }
             _ => {
                 let builder = GraphBuilder::new(root.clone(), config.clone());
                 let g = builder.build()?;

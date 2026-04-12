@@ -10,9 +10,12 @@ use crate::config::Config;
 use crate::output::OutputFormatter;
 
 fn arb_import() -> impl Strategy<Value = String> {
+    let reserved = &["do", "if", "in", "for", "let", "new", "try", "var", "case", "else", "enum", "null", "this", "true", "void", "with"];
     prop_oneof![
-        "[a-z]{1,6}".prop_map(|n| format!("import {{ {} }} from './{}';", n, n)),
-        "[a-z]{1,6}".prop_map(|n| format!("import {} from './{}';", n, n)),
+        "[a-z]{1,6}".prop_filter("avoid JS reserved words", move |n| !reserved.contains(&n.as_str()))
+            .prop_map(|n| format!("import {{ {} }} from './{}';", n, n)),
+        "[a-z]{1,6}".prop_filter("avoid JS reserved words", move |n| !reserved.contains(&n.as_str()))
+            .prop_map(|n| format!("import {} from './{}';", n, n)),
         "[a-z]{1,6}".prop_map(|n| format!("export * from './{}';", n)),
     ]
 }
