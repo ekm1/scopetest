@@ -82,13 +82,22 @@ impl GraphBuilder {
                                     &import.named_imports,
                                 );
                                 
-                                // Add edges to actual source files instead of barrel
-                                for (_name, source_path) in actual_sources {
-                                    if let Some(to_id) = g.get_file_id(&source_path) {
-                                        g.add_dependency(from_id, to_id);
+                                if !actual_sources.is_empty() {
+                                    // Add edges to actual source files instead of barrel
+                                    for (_name, source_path) in &actual_sources {
+                                        if let Some(to_id) = g.get_file_id(source_path) {
+                                            g.add_dependency(from_id, to_id);
+                                        }
                                     }
+                                    // If some names couldn't be resolved, fall back to barrel edge
+                                    if actual_sources.len() < import.named_imports.len() {
+                                        if let Some(to_id) = g.get_file_id(&canonical_resolved) {
+                                            g.add_dependency(from_id, to_id);
+                                        }
+                                    }
+                                    continue;
                                 }
-                                continue;
+                                // All names unresolved — fall through to fallback edge below
                             }
                         }
                         
@@ -187,12 +196,21 @@ impl GraphBuilder {
                                     &import.named_imports,
                                 );
                                 
-                                for (_name, source_path) in actual_sources {
-                                    if let Some(to_id) = graph.get_file_id(&source_path) {
-                                        graph.add_dependency(from_id, to_id);
+                                if !actual_sources.is_empty() {
+                                    for (_name, source_path) in &actual_sources {
+                                        if let Some(to_id) = graph.get_file_id(source_path) {
+                                            graph.add_dependency(from_id, to_id);
+                                        }
                                     }
+                                    // If some names couldn't be resolved, fall back to barrel edge
+                                    if actual_sources.len() < import.named_imports.len() {
+                                        if let Some(to_id) = graph.get_file_id(&canonical_resolved) {
+                                            graph.add_dependency(from_id, to_id);
+                                        }
+                                    }
+                                    continue;
                                 }
-                                continue;
+                                // All names unresolved — fall through to fallback edge below
                             }
                         }
                         

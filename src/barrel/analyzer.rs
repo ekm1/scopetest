@@ -145,6 +145,30 @@ impl BarrelAnalyzer {
         let barrel_dir = barrel_path.parent().unwrap_or(Path::new("."));
         let barrel_canonical = barrel_path.clone();
 
+        // First pass: collect local import bindings (name → resolved source path)
+        // so we can trace `export { X }` back to where X was imported from.
+        let mut local_imports: HashMap<String, PathBuf> = HashMap::new();
+        for stmt in &result.program.body {
+            if let Statement::ImportDeclaration(decl) = stmt {
+                let source_path = self.resolve_path(barrel_dir, decl.source.value.as_str());
+                if let Some(specifiers) = &decl.specifiers {
+                    for spec in specifiers {
+                        match spec {
+                            ImportDeclarationSpecifier::ImportSpecifier(s) => {
+                                local_imports.insert(s.local.name.to_string(), source_path.clone());
+                            }
+                            ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => {
+                                local_imports.insert(s.local.name.to_string(), source_path.clone());
+                            }
+                            ImportDeclarationSpecifier::ImportNamespaceSpecifier(s) => {
+                                local_imports.insert(s.local.name.to_string(), source_path.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         for stmt in &result.program.body {
             match stmt {
                 Statement::ExportNamedDeclaration(decl) => {
@@ -171,6 +195,30 @@ impl BarrelAnalyzer {
                                 source_path: barrel_canonical.clone(),
                                 original_name: None,
                             });
+                        }
+                    } else if !decl.specifiers.is_empty() {
+                        // Handle: export { X } (no `from` clause)
+                        // Trace each specifier back to its import source
+                        for spec in &decl.specifiers {
+                            let exported_name = spec.exported.name().to_string();
+                            let local_name = spec.local.name().to_string();
+                            
+                            if let Some(source_path) = local_imports.get(&local_name) {
+                                exports.insert(exported_name.clone(), ExportSource {
+                                    source_path: source_path.clone(),
+                                    original_name: if local_name != exported_name {
+                                        Some(local_name)
+                                    } else {
+                                        None
+                                    },
+                                });
+                            } else {
+                                // Locally declared but not imported — points to barrel itself
+                                exports.insert(exported_name, ExportSource {
+                                    source_path: barrel_canonical.clone(),
+                                    original_name: None,
+                                });
+                            }
                         }
                     }
                 }
