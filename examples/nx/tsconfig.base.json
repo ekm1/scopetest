@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@shop/ui": ["libs/ui/src/index.ts"],
+      "@shop/ui/*": ["libs/ui/src/*"],
+      "@shop/data": ["libs/data/src/index.ts"],
+      "@shop/data/*": ["libs/data/src/*"]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@acme/ui": ["packages/ui/src/index.ts"],
+      "@acme/ui/*": ["packages/ui/src/*"],
+      "@acme/utils": ["packages/utils/src/index.ts"],
+      "@acme/utils/*": ["packages/utils/src/*"]
+    }
+  }
+}

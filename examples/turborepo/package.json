@@ -1,0 +1,5 @@
+{
+  "name": "turborepo-example",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"]
+}

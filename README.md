@@ -61,6 +61,7 @@ Options:
       --fail-fast        Stop on first test failure (only with --exec)
       --threshold <N>    If affected tests exceed N, use all tests instead
       --sources          Output affected source files instead of tests
+      --packages         Output affected workspace packages instead of files
       --no-cache         Skip cache, force rebuild
   -r, --root <PATH>      Project root directory
 ```
@@ -85,6 +86,23 @@ Options:
       --no-cache         Skip cache, force rebuild
 ```
 
+**`init`** - Detect your monorepo setup and write a starter config
+
+```bash
+scopetest init
+```
+
+Detects Nx, Turborepo, pnpm, npm/yarn workspaces or Lerna, lists the packages it
+found, writes `.scopetestrc.json`, and prints the command that wires scopetest
+into your runner.
+
+```
+Options:
+  -r, --root <PATH>    Project root directory
+      --force          Overwrite an existing .scopetestrc.json
+      --dry-run        Print what would happen without writing anything
+```
+
 **`build`** - Rebuild dependency graph cache
 
 ```
@@ -99,8 +117,11 @@ Options:
 | `paths` | Space-separated (default) | `src/a.spec.ts src/b.spec.ts` |
 | `list` | Newline-separated | `src/a.spec.ts`<br>`src/b.spec.ts` |
 | `json` | Full stats | `{"tests": [...], "stats": {...}}` |
+| `turbo` | Turborepo filter flags | `--filter=@acme/ui --filter=@acme/web` |
+| `nx` | Comma-separated projects | `checkout,shell,ui` |
 
-Aliases: `jest` and `vitest` both map to `paths`.
+Aliases: `jest` and `vitest` both map to `paths`. `turbo` and `nx` describe
+packages rather than files, so they imply `--packages`.
 
 ## Configuration
 
@@ -113,6 +134,35 @@ Create `.scopetestrc.json`:
   "extensions": [".ts", ".tsx", ".js", ".jsx"]
 }
 ```
+
+## Monorepo Integration
+
+`scopetest affected --packages` maps the affected files onto your workspace
+packages, so any runner that accepts a package list can consume it. Run
+`scopetest init` to detect your setup and print the right snippet.
+
+### Turborepo
+
+```bash
+turbo run test $(scopetest affected -f turbo)
+```
+
+### Nx
+
+```bash
+nx run-many -t test -p $(scopetest affected -f nx)
+```
+
+### pnpm workspaces
+
+```bash
+pnpm $(scopetest affected -f turbo) test
+```
+
+Package discovery reads `pnpm-workspace.yaml`, the `workspaces` field in
+`package.json`, or Nx `project.json` files — no install step required.
+
+Working examples for Nx and Turborepo live in [`examples/`](examples/).
 
 ## CI Examples
 
