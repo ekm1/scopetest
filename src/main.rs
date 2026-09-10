@@ -10,6 +10,7 @@ use scopetest::git::GitChangeDetector;
 use scopetest::affected::AffectedTestFinder;
 use scopetest::output::{OutputFormat, OutputFormatter};
 use scopetest::barrel::{BarrelAnalyzer};
+use scopetest::workspace::{Workspace, WorkspaceKind};
 
 #[derive(Parser)]
 #[command(name = "scopetest")]
@@ -39,6 +40,10 @@ enum Commands {
         /// Output affected source files instead of tests
         #[arg(long)]
         sources: bool,
+
+        /// Output affected workspace packages instead of files
+        #[arg(long)]
+        packages: bool,
 
         /// Disable cache
         #[arg(long)]
@@ -98,6 +103,21 @@ enum Commands {
         root: Option<PathBuf>,
     },
 
+    /// Detect the monorepo setup and write a starter config
+    Init {
+        /// Project root directory
+        #[arg(short, long)]
+        root: Option<PathBuf>,
+
+        /// Overwrite an existing .scopetestrc.json
+        #[arg(long)]
+        force: bool,
+
+        /// Print what would happen without writing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Analyze and rewrite barrel imports to direct imports
     Barrel {
         #[command(subcommand)]
@@ -134,15 +154,18 @@ fn main() -> ExitCode {
 
     let result = match cli.command {
         Commands::Affected { 
-            base, since, format, sources, no_cache, root, exec, fail_fast, threshold, no_barrel_expand 
+            base, since, format, sources, packages, no_cache, root, exec, fail_fast, threshold, no_barrel_expand 
         } => {
-            run_affected(base, since, format, sources, no_cache, root, exec, fail_fast, threshold, no_barrel_expand)
+            run_affected(base, since, format, sources, packages, no_cache, root, exec, fail_fast, threshold, no_barrel_expand)
         }
         Commands::Why { test, base, since, root, no_cache, all } => {
             run_why(test, base, since, root, no_cache, all)
         }
         Commands::Build { root } => {
             run_build(root)
+        }
+        Commands::Init { root, force, dry_run } => {
+            run_init(root, force, dry_run)
         }
         Commands::Barrel { action } => {
             run_barrel(action)
@@ -191,6 +214,7 @@ fn run_affected(
     since: Option<String>,
     format: String,
     sources: bool,
+    packages: bool,
     no_cache: bool,
     root: Option<PathBuf>,
     exec: Option<String>,
@@ -218,6 +242,35 @@ fn run_affected(
     let result = finder.find_affected(&changes);
     let (total_tests, total_sources) = finder.get_totals();
 
+    let output_format: OutputFormat = format.parse()
+        .map_err(|e: String| anyhow::anyhow!(e))?;
+
+    if packages || output_format.implies_packages() {
+        let workspace = Workspace::discover(&root);
+        let total_packages = workspace.packages.len();
+
+        let over_threshold = threshold.map(|max| result.tests.len() > max).unwrap_or(false);
+
+        let names = if over_threshold {
+            eprintln!(
+                "Threshold exceeded: {} affected tests > {} max. Using all packages.",
+                result.tests.len(),
+                threshold.unwrap_or(0)
+            );
+            let mut all: Vec<String> =
+                workspace.packages.iter().map(|p| p.name.clone()).collect();
+            all.sort();
+            all.dedup();
+            all
+        } else {
+            let mut affected_files = result.tests.clone();
+            affected_files.extend(result.sources.clone());
+            workspace.packages_for_files(&affected_files)
+        };
+
+        return run_with_packages(&names, output_format, exec, &root, total_packages);
+    }
+
     if let Some(max_tests) = threshold {
         if result.tests.len() > max_tests {
             eprintln!(
@@ -236,6 +289,147 @@ fn run_affected(
 
     let files = if sources { &result.sources } else { &result.tests };
     run_with_files(files, &format, exec, fail_fast, &root, total_tests, total_sources)
+}
+
+const CONFIG_FILE: &str = ".scopetestrc.json";
+
+/// Starter config. Deliberately minimal: every key here is already the
+/// default, so it serves as a discoverable template rather than a set of
+/// overrides the user did not ask for.
+fn starter_config() -> String {
+    let config = serde_json::json!({
+        "testPatterns": [
+            "**/*.spec.ts",
+            "**/*.spec.tsx",
+            "**/*.test.ts",
+            "**/*.test.tsx"
+        ],
+        "ignorePatterns": [
+            "**/node_modules/**",
+            "**/dist/**",
+            "**/build/**",
+            "**/coverage/**"
+        ],
+        "extensions": [".ts", ".tsx", ".js", ".jsx"],
+        "expandBarrels": true
+    });
+
+    serde_json::to_string_pretty(&config).unwrap_or_default()
+}
+
+/// The command that wires scopetest into whichever runner the repo already uses.
+fn integration_snippet(kind: WorkspaceKind) -> String {
+    match kind {
+        WorkspaceKind::Nx => {
+            "  nx run-many -t test -p $(scopetest affected -f nx)".to_string()
+        }
+        WorkspaceKind::Turborepo => {
+            "  turbo run test $(scopetest affected -f turbo)".to_string()
+        }
+        WorkspaceKind::Pnpm => {
+            "  pnpm $(scopetest affected -f turbo) test".to_string()
+        }
+        WorkspaceKind::Lerna | WorkspaceKind::NpmWorkspaces => {
+            "  npm test --workspace $(scopetest affected --packages)".to_string()
+        }
+        WorkspaceKind::Single => {
+            "  scopetest affected -x \"jest --runTestsByPath {}\"".to_string()
+        }
+    }
+}
+
+fn run_init(root: Option<PathBuf>, force: bool, dry_run: bool) -> Result<ExitCode> {
+    let root = get_root(root);
+    let workspace = Workspace::discover(&root);
+
+    println!("scopetest init");
+    println!();
+    println!("  root:      {}", root.display());
+    println!("  detected:  {}", workspace.kind.label());
+
+    if workspace.packages.is_empty() {
+        println!("  packages:  none found");
+    } else {
+        println!("  packages:  {}", workspace.packages.len());
+        for package in workspace.packages.iter().take(5) {
+            let relative = package
+                .root
+                .strip_prefix(&root)
+                .unwrap_or(&package.root)
+                .display()
+                .to_string();
+            let location = if relative.is_empty() { ".".to_string() } else { relative };
+            println!("             - {} ({})", package.name, location);
+        }
+        if workspace.packages.len() > 5 {
+            println!("             ... and {} more", workspace.packages.len() - 5);
+        }
+    }
+
+    println!();
+
+    let config_path = root.join(CONFIG_FILE);
+    if config_path.exists() && !force {
+        println!("  {} already exists (use --force to overwrite)", CONFIG_FILE);
+    } else if dry_run {
+        println!("  would write {}", CONFIG_FILE);
+    } else {
+        std::fs::write(&config_path, starter_config())?;
+        println!("  wrote {}", CONFIG_FILE);
+    }
+
+    println!();
+    println!("Run your affected tests with:");
+    println!();
+    println!("{}", integration_snippet(workspace.kind));
+    println!();
+
+    if workspace.kind != WorkspaceKind::Single && !workspace.is_monorepo() {
+        eprintln!(
+            "Warning: {} detected but only {} package(s) found. Check your workspace globs.",
+            workspace.kind.label(),
+            workspace.packages.len()
+        );
+    }
+
+    Ok(ExitCode::SUCCESS)
+}
+
+fn run_with_packages(
+    packages: &[String],
+    format: OutputFormat,
+    exec: Option<String>,
+    root: &PathBuf,
+    total_packages: usize,
+) -> Result<ExitCode> {
+    let output = OutputFormatter::format_packages(packages, format, total_packages);
+
+    if let Some(cmd_template) = exec {
+        if packages.is_empty() {
+            eprintln!("No affected packages found.");
+            return Ok(ExitCode::SUCCESS);
+        }
+
+        let cmd_str = cmd_template.replace("{}", &output);
+        eprintln!("Running: {}", cmd_str);
+
+        let status = Command::new("sh")
+            .arg("-c")
+            .arg(&cmd_str)
+            .current_dir(root)
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()?;
+
+        if !status.success() {
+            return Ok(ExitCode::from(status.code().unwrap_or(1) as u8));
+        }
+    } else {
+        println!("{}", output);
+    }
+
+    Ok(ExitCode::SUCCESS)
 }
 
 fn run_with_files(
@@ -260,6 +454,9 @@ fn run_with_files(
             total_sources,
         ),
         OutputFormat::List => OutputFormatter::format_list(files),
+        // Package-shaped formats are handled by run_with_packages before we
+        // ever get here; fall back to plain paths rather than panicking.
+        OutputFormat::Turbo | OutputFormat::Nx => OutputFormatter::format_paths(files),
     };
 
     // Execute command or print output
