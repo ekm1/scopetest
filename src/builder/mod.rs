@@ -28,9 +28,13 @@ impl GraphBuilder {
     pub fn new(root: PathBuf, config: Config) -> Self {
         let mut resolver = PathResolver::new(root.clone());
         
-        let tsconfig_path = root.join("tsconfig.json");
-        if tsconfig_path.exists() {
-            let _ = resolver.load_tsconfig(&tsconfig_path);
+        // tsconfig.base.json is where Nx (and several other generators) keep
+        // path aliases, so check it as well as the plain tsconfig.
+        for candidate in ["tsconfig.json", "tsconfig.base.json"] {
+            let tsconfig_path = root.join(candidate);
+            if tsconfig_path.exists() {
+                let _ = resolver.load_tsconfig(&tsconfig_path);
+            }
         }
 
         Self { root, config, resolver }

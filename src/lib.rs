@@ -8,6 +8,7 @@ pub mod config;
 pub mod builder;
 pub mod affected;
 pub mod barrel;
+pub mod workspace;
 
 #[cfg(test)]
 #[path = "tests.rs"]
@@ -18,3 +19,4 @@ pub use parser::{ImportInfo, ImportType};
 pub use config::Config;
 pub use affected::{AffectedResult, DependencyPath};
 pub use barrel::{BarrelAnalyzer};
+pub use workspace::{Package, Workspace, WorkspaceKind};
