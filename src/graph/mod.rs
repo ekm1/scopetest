@@ -146,10 +146,14 @@ impl DependencyGraph {
     }
 
     pub fn remove_file(&mut self, id: FileId) {
-        if let Some(node) = self.graph.node_weight(id) {
-            self.path_to_id.remove(&node.path.clone());
+        if let Some(node) = self.graph.remove_node(id) {
+            self.path_to_id.remove(&node.path);
+            // petgraph's DiGraph swaps the last node into the removed index,
+            // so the moved node's id must be remapped.
+            if let Some(moved) = self.graph.node_weight(id) {
+                self.path_to_id.insert(moved.path.clone(), id);
+            }
         }
-        self.graph.remove_node(id);
     }
 
     pub fn contains_file(&self, path: &Path) -> bool {
@@ -307,6 +311,24 @@ mod tests {
         
         let tests = graph.get_test_files();
         assert_eq!(tests.len(), 2);
+    }
+
+    #[test]
+    fn test_remove_file_remaps_swapped_node() {
+        let mut graph = DependencyGraph::new();
+        let a = graph.add_file(PathBuf::from("/test/a.ts"), false);
+        let _b = graph.add_file(PathBuf::from("/test/b.ts"), false);
+        let _c = graph.add_file(PathBuf::from("/test/c.ts"), false);
+
+        graph.remove_file(a);
+
+        // c was swapped into a's slot; lookups and new edges must still work.
+        let c = graph.get_file_id(Path::new("/test/c.ts")).unwrap();
+        let b = graph.get_file_id(Path::new("/test/b.ts")).unwrap();
+        assert_eq!(graph.get_file_path(c), Some(Path::new("/test/c.ts")));
+        assert!(graph.get_file_id(Path::new("/test/a.ts")).is_none());
+        graph.add_dependency(b, c);
+        assert_eq!(graph.get_dependencies(b), vec![c]);
     }
 
     #[test]
