@@ -1,0 +1,41 @@
+{
+  "name": "scopetest-nx",
+  "version": "0.2.1",
+  "description": "Nx plugin for scopetest - run only the test files affected by your changes, per project",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ekm1/scopetest",
+    "directory": "packages/nx"
+  },
+  "keywords": [
+    "nx",
+    "nx-plugin",
+    "scopetest",
+    "testing",
+    "jest",
+    "vitest",
+    "monorepo",
+    "affected"
+  ],
+  "main": "src/index.js",
+  "executors": "./executors.json",
+  "generators": "./generators.json",
+  "files": [
+    "src",
+    "executors.json",
+    "generators.json"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "scopetest-cli": ">=0.2.2"
+  },
+  "peerDependencies": {
+    "nx": ">=19.2.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "executors": {
+    "affected": {
+      "implementation": "./src/executors/affected/executor.js",
+      "schema": "./src/executors/affected/schema.json",
+      "description": "Run only the test files of this project that are affected by changes since the base ref."
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "version": 2,
+  "title": "scopetest affected executor",
+  "description": "Run only the test files of this project that are affected by changes since the base ref.",
+  "type": "object",
+  "properties": {
+    "runner": {
+      "type": "string",
+      "enum": ["auto", "jest", "vitest"],
+      "default": "auto",
+      "description": "Test runner to invoke. `auto` picks based on the config file in the project root."
+    },
+    "base": {
+      "type": "string",
+      "description": "Git ref to compare against. Defaults to $NX_BASE, then `defaultBase` from nx.json, then main/master."
+    },
+    "command": {
+      "type": "string",
+      "description": "Custom command run from the project root instead of the built-in runner. `{}` is replaced by the affected test files (relative to the project root)."
+    },
+    "args": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Extra arguments passed to the test runner, e.g. [\"--coverage\"]."
+    },
+    "threshold": {
+      "type": "number",
+      "description": "If more than this many test files of the project are affected, run the project's whole suite instead."
+    },
+    "runAllOnConfigChange": {
+      "type": "boolean",
+      "default": true,
+      "description": "Run the project's whole suite when files scopetest cannot trace changed (lockfiles, root package.json, nx.json, tsconfig.base.json, jest preset, or the project's own config files)."
+    },
+    "noCache": {
+      "type": "boolean",
+      "default": false,
+      "description": "Rebuild the scopetest dependency graph instead of using the cache."
+    }
+  },
+  "additionalProperties": false
+}

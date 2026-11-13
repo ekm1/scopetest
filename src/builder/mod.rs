@@ -28,9 +28,12 @@ impl GraphBuilder {
     pub fn new(root: PathBuf, config: Config) -> Self {
         let mut resolver = PathResolver::new(root.clone());
         
-        let tsconfig_path = root.join("tsconfig.json");
-        if tsconfig_path.exists() {
-            let _ = resolver.load_tsconfig(&tsconfig_path);
+        // `tsconfig.base.json` is where Nx workspaces keep their path aliases.
+        for name in ["tsconfig.base.json", "tsconfig.json"] {
+            let tsconfig_path = root.join(name);
+            if tsconfig_path.exists() {
+                let _ = resolver.load_tsconfig(&tsconfig_path);
+            }
         }
 
         Self { root, config, resolver }
@@ -293,6 +296,28 @@ mod tests {
 
         assert_eq!(graph.file_count(), 3);
         assert!(graph.edge_count() > 0);
+    }
+
+    #[test]
+    fn test_resolves_aliases_from_tsconfig_base() {
+        let temp = TempDir::new().unwrap();
+        let app = temp.path().join("apps/web/src");
+        let lib = temp.path().join("libs/util/src");
+        fs::create_dir_all(&app).unwrap();
+        fs::create_dir_all(&lib).unwrap();
+
+        fs::write(
+            temp.path().join("tsconfig.base.json"),
+            r#"{"compilerOptions":{"baseUrl":".","paths":{"@acme/util":["libs/util/src/index.ts"]}}}"#,
+        ).unwrap();
+        fs::write(lib.join("index.ts"), "export const u = 1;").unwrap();
+        fs::write(app.join("main.spec.ts"), r#"import { u } from '@acme/util';"#).unwrap();
+
+        let builder = GraphBuilder::new(temp.path().to_path_buf(), Config::default());
+        let graph = builder.build().unwrap();
+
+        assert_eq!(graph.file_count(), 2);
+        assert_eq!(graph.edge_count(), 1);
     }
 
     #[test]

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "$id": "ScopetestNxInit",
+  "title": "Set up scopetest-nx",
+  "type": "object",
+  "properties": {
+    "targetName": {
+      "type": "string",
+      "default": "test-affected",
+      "description": "Name of the inferred target added to projects with a Jest or Vitest config."
+    }
+  },
+  "additionalProperties": false
+}

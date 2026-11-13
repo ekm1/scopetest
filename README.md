@@ -127,6 +127,16 @@ Create `.scopetestrc.json`:
   run: npx scopetest-cli affected -b origin/main -x "jest --runTestsByPath {}" --threshold 500
 ```
 
+### Nx
+
+Use the [`scopetest-nx`](packages/nx) plugin to get a `test-affected` target on every Jest/Vitest project:
+
+```bash
+npm install -D scopetest-nx
+npx nx g scopetest-nx:init
+npx nx affected -t test-affected
+```
+
 ### Jenkins
 
 ```bash
@@ -159,7 +169,7 @@ On a 12,500+ file monorepo:
 - Dynamic: `import('path')`
 - CommonJS: `require('path')`
 - Re-exports: `export * from 'y'`
-- TypeScript path aliases
+- TypeScript path aliases (`tsconfig.json` and `tsconfig.base.json`)
 - Workspace packages
 
 ## License

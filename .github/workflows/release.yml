@@ -110,13 +110,14 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           jq ".version = \"$VERSION\"" package.json > tmp.json && mv tmp.json package.json
+          jq ".version = \"$VERSION\"" packages/nx/package.json > tmp.json && mv tmp.json packages/nx/package.json
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
 
       - name: Commit version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json Cargo.toml
+          git add package.json packages/nx/package.json Cargo.toml
           git diff --cached --quiet || git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }}"
           git push origin HEAD:master
           
@@ -131,3 +132,9 @@ jobs:
           tag_name: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.ref_name }}
           files: binaries/*
           generate_release_notes: true
+
+      - name: Publish Nx plugin to npm
+        working-directory: packages/nx
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

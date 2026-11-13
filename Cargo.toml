@@ -9,7 +9,7 @@ homepage = "https://github.com/ekm1/scopetest"
 readme = "README.md"
 keywords = ["testing", "jest", "monorepo", "ci", "rust"]
 categories = ["development-tools::testing", "command-line-utilities"]
-exclude = [".github/", "npm/", "bin/"]
+exclude = [".github/", "npm/", "bin/", "packages/"]
 
 [[bin]]
 name = "scopetest"

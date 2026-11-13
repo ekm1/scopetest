@@ -61,8 +61,16 @@ impl CacheManager {
         let data = bincode::serialize(&serialized)
             .map_err(|e| CacheError::WriteError(e.to_string()))?;
 
-        fs::write(self.cache_path(), data)
+        // Write to a temp file and rename so concurrent readers (e.g. parallel
+        // task runners) never observe a partially written cache.
+        let tmp_path = self.cache_dir.join(format!("{}.{}.tmp", CACHE_FILE, std::process::id()));
+        fs::write(&tmp_path, data)
             .map_err(|e| CacheError::WriteError(e.to_string()))?;
+        fs::rename(&tmp_path, self.cache_path())
+            .map_err(|e| {
+                let _ = fs::remove_file(&tmp_path);
+                CacheError::WriteError(e.to_string())
+            })?;
 
         Ok(())
     }
