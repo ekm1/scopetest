@@ -5,6 +5,12 @@ Nx plugin for [scopetest](https://github.com/ekm1/scopetest). Nx decides *which 
 ## Setup
 
 ```bash
+npx nx add scopetest-nx
+```
+
+That installs the package (the scopetest binary comes with it as a dependency) and runs its `init` generator. The manual equivalent:
+
+```bash
 npm install -D scopetest-nx
 npx nx g scopetest-nx:init
 ```
