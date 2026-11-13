@@ -1,6 +1,6 @@
 'use strict';
 
-const PLUGIN = 'scopetest-nx';
+const PLUGIN = 'nx-scopetest';
 const CACHE_DIR = '.scopetest';
 
 /** Registers the plugin in nx.json and git-ignores the scopetest cache. */

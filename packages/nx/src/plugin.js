@@ -45,7 +45,7 @@ function buildTarget(runner, options) {
     if (options && options[key] !== undefined) targetOptions[key] = options[key];
   }
   return {
-    executor: 'scopetest-nx:affected',
+    executor: 'nx-scopetest:affected',
     // The result depends on git state, which Nx inputs cannot describe.
     cache: false,
     options: targetOptions,

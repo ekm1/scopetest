@@ -1,5 +1,5 @@
 {
-  "name": "scopetest-nx",
+  "name": "nx-scopetest",
   "version": "0.2.1",
   "description": "Nx plugin for scopetest - run only the test files affected by your changes, per project",
   "license": "MIT",

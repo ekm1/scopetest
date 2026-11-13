@@ -1,18 +1,18 @@
-# scopetest-nx
+# nx-scopetest
 
 Nx plugin for [scopetest](https://github.com/ekm1/scopetest). Nx decides *which projects* are affected; scopetest decides *which test files* inside them are — so a one-line change in a shared lib runs a handful of spec files instead of every suite downstream.
 
 ## Setup
 
 ```bash
-npx nx add scopetest-nx
+npx nx add nx-scopetest
 ```
 
 That installs the package (the scopetest binary comes with it as a dependency) and runs its `init` generator. The manual equivalent:
 
 ```bash
-npm install -D scopetest-nx
-npx nx g scopetest-nx:init
+npm install -D nx-scopetest
+npx nx g nx-scopetest:init
 ```
 
 `init` registers the plugin in `nx.json` and git-ignores the `.scopetest/` cache. Every project with a `jest.config.*`, `vitest.config.*` (or a `vite.config.*` containing a `test` block) now has a `test-affected` target — no `project.json` edits needed.
@@ -53,7 +53,7 @@ Set workspace-wide defaults in the plugin entry of `nx.json`, or per project/run
 {
   "plugins": [
     {
-      "plugin": "scopetest-nx",
+      "plugin": "nx-scopetest",
       "options": { "targetName": "test-affected", "threshold": 200 }
     }
   ]
@@ -77,7 +77,7 @@ To wire a target by hand instead of using the inferred one:
 {
   "targets": {
     "test-affected": {
-      "executor": "scopetest-nx:affected",
+      "executor": "nx-scopetest:affected",
       "options": { "command": "npx playwright test {}" }
     }
   }

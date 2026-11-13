@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/schema",
-  "$id": "ScopetestNxInit",
-  "title": "Set up scopetest-nx",
+  "$id": "NxScopetestInit",
+  "title": "Set up nx-scopetest",
   "type": "object",
   "properties": {
     "targetName": {

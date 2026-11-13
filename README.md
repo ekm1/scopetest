@@ -129,11 +129,11 @@ Create `.scopetestrc.json`:
 
 ### Nx
 
-Use the [`scopetest-nx`](packages/nx) plugin to get a `test-affected` target on every Jest/Vitest project:
+Use the [`nx-scopetest`](packages/nx) plugin to get a `test-affected` target on every Jest/Vitest project:
 
 ```bash
-npm install -D scopetest-nx
-npx nx g scopetest-nx:init
+npm install -D nx-scopetest
+npx nx g nx-scopetest:init
 npx nx affected -t test-affected
 ```
 

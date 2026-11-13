@@ -3,7 +3,7 @@
     "init": {
       "factory": "./src/generators/init/generator.js",
       "schema": "./src/generators/init/schema.json",
-      "description": "Register the scopetest-nx plugin in nx.json and ignore the scopetest cache."
+      "description": "Register the nx-scopetest plugin in nx.json and ignore the scopetest cache."
     }
   }
 }

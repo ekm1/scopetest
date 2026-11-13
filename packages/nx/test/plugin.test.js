@@ -12,7 +12,7 @@ const initGenerator = require('../src/generators/init/generator');
 const { withLock } = require('../src/lib/scopetest');
 
 function workspace(files) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'scopetest-nx-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nx-scopetest-'));
   for (const [file, content] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     fs.writeFileSync(path.join(root, file), content);
@@ -41,7 +41,7 @@ test('createNodesV2 infers a target per project with a test config', () => {
 
   assert.deepStrictEqual(results.map(([file]) => file), ['libs/a/jest.config.ts', 'libs/b/vite.config.ts']);
   const target = results[0][1].projects['libs/a'].targets.scoped;
-  assert.strictEqual(target.executor, 'scopetest-nx:affected');
+  assert.strictEqual(target.executor, 'nx-scopetest:affected');
   assert.strictEqual(target.cache, false);
   assert.deepStrictEqual(target.options, { runner: 'jest', threshold: 50 });
   assert.strictEqual(results[1][1].projects['libs/b'].targets.scoped.options.runner, 'vitest');
@@ -116,7 +116,7 @@ test('init generator registers the plugin and ignores the cache, idempotently', 
 
   assert.deepStrictEqual(JSON.parse(files.get('nx.json')).plugins, [
     '@nx/jest/plugin',
-    { plugin: 'scopetest-nx', options: { targetName: 'test-affected' } },
+    { plugin: 'nx-scopetest', options: { targetName: 'test-affected' } },
   ]);
   assert.strictEqual(files.get('.gitignore'), 'node_modules\n.scopetest/\n');
 });
